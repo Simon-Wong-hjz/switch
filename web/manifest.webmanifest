@@ -1,0 +1,16 @@
+{
+  "id": "/",
+  "name": "Switch",
+  "short_name": "Switch",
+  "description": "Codex and Claude Code sessions on one local board",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "launch_handler": {"client_mode": "focus-existing"},
+  "background_color": "#0E1522",
+  "theme_color": "#0E1522",
+  "icons": [
+    {"src": "assets/icon-192.png", "sizes": "192x192", "type": "image/png"},
+    {"src": "assets/icon-512.png", "sizes": "512x512", "type": "image/png"}
+  ]
+}
