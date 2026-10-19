@@ -6,6 +6,7 @@ import struct
 import tempfile
 import threading
 import unittest
+from unittest.mock import patch
 from urllib.parse import urljoin
 
 from tb.board_server import create_server
@@ -65,6 +66,13 @@ class BoardServerTests(unittest.TestCase):
         query = {'session': 'session-one', 'reply': self.descriptor['id'], **extra}
         from urllib.parse import urlencode
         return '/api/reply?' + urlencode(query)
+
+    def test_loopback_startup_does_not_require_reverse_dns(self):
+        with patch('socket.getfqdn', side_effect=OSError('Resolver unavailable')):
+            server = create_server(0, self.root, lambda: {'tasks': []})
+        self.addCleanup(server.server_close)
+        self.assertEqual(server.server_address[0], '127.0.0.1')
+        self.assertGreater(server.server_port, 0)
 
     def test_reply_endpoint_requires_token_origin_and_local_host(self):
         for headers in ({'X-Taskboard-Token': ''}, {'X-Taskboard-Token': 'wrong'},

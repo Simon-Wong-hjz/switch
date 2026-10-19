@@ -6,11 +6,20 @@ from pathlib import Path
 import secrets
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from socketserver import TCPServer
 from urllib.parse import parse_qs, urlsplit
 
 from tb.replies import ReplyError
 
 from tb.settings_store import SettingsStore, InvalidSettings, SettingsConflict, MAX_SETTINGS_BYTES, validate_settings
+
+
+class _LoopbackHTTPServer(ThreadingHTTPServer):
+    def server_bind(self):
+        # A literal loopback address needs no reverse DNS lookup. HTTPServer's
+        # default lookup can block startup when the system resolver is slow.
+        TCPServer.server_bind(self)
+        self.server_name, self.server_port = self.server_address[:2]
 
 
 def create_server(port, directory, refresh, settings_path=None, stop=None, token=None, read_reply=None, assets_dir=None):
@@ -175,7 +184,7 @@ def create_server(port, directory, refresh, settings_path=None, stop=None, token
         def log_message(self, *args):
             pass
 
-    httpd = ThreadingHTTPServer(('127.0.0.1', port), Handler)
+    httpd = _LoopbackHTTPServer(('127.0.0.1', port), Handler)
     httpd.daemon_threads = True
     httpd.token = key
     httpd.instance = hashlib.sha256(key.encode('utf-8')).hexdigest()
