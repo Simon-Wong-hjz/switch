@@ -295,7 +295,9 @@ class Cli(unittest.TestCase):
 
     @unittest.skipUnless(hasattr(signal, 'SIGTERM') and os.name != 'nt', 'POSIX signals')
     def test_sigterm_shuts_down_cleanly_and_removes_process_record(self):
-        process = subprocess.Popen([sys.executable, str(REPO / 'taskboard.py'), 'run', '--port', '0', '--no-open'],
+        probe = ('import faulthandler,runpy,sys; faulthandler.dump_traceback_later(5); '
+                 'sys.argv=sys.argv[1:]; runpy.run_path(sys.argv[0],run_name="__main__")')
+        process = subprocess.Popen([sys.executable, '-c', probe, str(REPO / 'taskboard.py'), 'run', '--port', '0', '--no-open'],
                                    env=self.env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         self.addCleanup(self.finish, process)
         record = self.root / 'data' / 'server.pid'
@@ -305,7 +307,10 @@ class Cli(unittest.TestCase):
                 output, error = process.communicate()
                 self.fail(f'Server failed to start: {output} {error}')
             time.sleep(0.05)
-        self.assertTrue(record.exists(), 'Server recorded readiness')
+        if not record.exists():
+            process.kill()
+            output, error = process.communicate(timeout=5)
+            self.fail(f'Server did not record readiness: {output} {error}')
         self.assertEqual(json.loads(record.read_text())['pid'], process.pid)
         process.send_signal(signal.SIGTERM)
         self.assertEqual(process.wait(timeout=10), 0, 'Normal stop must not trigger launchd recovery')

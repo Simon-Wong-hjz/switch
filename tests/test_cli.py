@@ -209,7 +209,9 @@ class Lifecycle(unittest.TestCase):
 
     @unittest.skipIf(os.name == 'nt', 'Windows runtime checks deferred until release')
     def test_real_start_repeat_bind_failure_and_authenticated_stop(self):
-        process = subprocess.Popen([sys.executable, str(REPO / 'taskboard.py'), 'run', '--port', '0', '--no-open'],
+        probe = ('import faulthandler,runpy,sys; faulthandler.dump_traceback_later(5); '
+                 'sys.argv=sys.argv[1:]; runpy.run_path(sys.argv[0],run_name="__main__")')
+        process = subprocess.Popen([sys.executable, '-c', probe, str(REPO / 'taskboard.py'), 'run', '--port', '0', '--no-open'],
                                    env=self.env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         self.addCleanup(self.finish, process)
         deadline = time.monotonic() + 10
@@ -218,7 +220,10 @@ class Lifecycle(unittest.TestCase):
                 stdout, stderr = process.communicate()
                 self.fail(f'Server failed to start: {stdout} {stderr}')
             time.sleep(0.05)
-        self.assertTrue(self.pid.exists(), 'Server recorded readiness')
+        if not self.pid.exists():
+            process.kill()
+            stdout, stderr = process.communicate(timeout=5)
+            self.fail(f'Server did not record readiness: {stdout} {stderr}')
         info = cli._pid_info()
         self.assertEqual(info['pid'], process.pid)
         self.assertEqual(cli._running(), info)
