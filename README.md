@@ -77,7 +77,7 @@ Enable alerts from the Priority column header. **Only Priority sessions notify a
 
 Alerts cover new final replies, new questions and confirmed Claude Code approval waits. Existing states do not notify on page load or when moving a card into Priority. Alerts require an open board page and a running backend.
 
-Desktop read signals update the board. Marking a reply unread in Codex Desktop restores its unread flag; reading it again clears it. CLI sessions have no reliable read signal. Use **Mark this reply as read**, **Open**, or **Copy resume command** to acknowledge the reply in Switch. Expanding a card alone does not mark it read. Reading an older reply does not clear a newer one.
+Codex Desktop conversations follow Codex's current read state on every refresh: listed as unread keeps the new-reply flag, otherwise the reply shows as read, including a reply that finished in a conversation you already had open. Marking a reply unread in Codex restores its flag; reading it again clears it. If Codex's state file is missing, unreadable, in an unknown format, signed out, or older than the reply, Switch keeps what it last knew and does not assume the reply was read. CLI sessions have no reliable read signal. Use **Mark this reply as read**, **Open**, or **Copy resume command** to acknowledge the reply in Switch. Expanding a card alone does not mark it read. Reading an older reply does not clear a newer one.
 
 ## Local files and clean removal
 
@@ -107,7 +107,7 @@ Omit `--purge` to keep board data. Unrelated client settings and conversations a
 - Supports local interactive Codex Desktop/CLI and Claude Desktop **Code** / Claude Code CLI sessions. Programmatic/subagent sessions, Claude cloud chat and Cowork are outside scope.
 - Reads the latest final reply, not full conversation history, tool output or file diffs. Review changes and continue the task in the original client or IDE.
 - Relies on client-local formats that may change. Unknown approval state is not presented as a confirmed wait; Codex approval waits cannot currently be reliably detected.
-- Desktop read state follows the client. If Codex marks a previously visible conversation read while opening another, Switch follows that change too.
+- Codex Desktop read state mirrors the client's own classification, including when it marks a previously visible conversation read while opening another. Switch does not add an unread flag when the current native state classifies the reply as read.
 - The backend listens on loopback only. It is a personal local tool, not a multi-user service; do not expose its port on a network. See [Security](SECURITY.md).
 
 ## Contribute

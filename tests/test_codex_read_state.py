@@ -7,6 +7,15 @@ from pathlib import Path
 from tb.codex_read_state import ReadTracker, STATE_KEY
 
 
+def iso(seconds):
+    return datetime.fromtimestamp(seconds, timezone.utc).isoformat().replace('+00:00', 'Z')
+
+
+# Native writes below are stamped between replies; unstamped writes use the real
+# clock, which is later than both.
+R1, R2 = iso(1_699_999_900), iso(1_700_000_050)
+
+
 class ReadStateTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -15,217 +24,201 @@ class ReadStateTests(unittest.TestCase):
         self.cache = Path(self.tmp.name) / 'seen.json'
         self.tracker = ReadTracker(self.source, self.cache)
 
-    def native(self, ids, identity='account', host='local:host'):
+    def native(self, ids, identity='account', host='local:host', seconds=None):
         self.source.write_text(json.dumps({STATE_KEY: {'version': 1, 'unreadByIdentity': {identity: {host: ids}}}}))
+        if seconds is not None:
+            self.stamp_source(seconds)
 
-    def sample(self, reply='reply-1', tid='task'):
-        task = {'id': tid, 'agent': 'codex', 'last_reply': reply}
-        self.tracker.apply([task])
-        return task.get('desktop_seen_reply')
-
-    def snapshot(self, reply='reply-1'):
-        task = {'id': 'task', 'agent': 'codex', 'last_reply': reply}
+    def snapshot(self, reply=R1, tid='task', origin='desktop'):
+        task = {'id': tid, 'agent': 'codex', 'origin': origin, 'last_reply': reply}
         self.tracker.apply([task])
         return task
 
     def stamp_source(self, seconds):
         os.utime(self.source, (seconds, seconds))
 
-    def assert_unread(self, task, reply='reply-1', seconds=1_700_000_000):
+    def assert_unread(self, task, reply=R1, seconds=1_700_000_000):
         self.assertEqual(task.get('desktop_unread_reply'), reply)
         self.assertEqual(datetime.fromisoformat(task['desktop_unread_at'].replace('Z', '+00:00')),
                          datetime.fromtimestamp(seconds, timezone.utc))
+        self.assertIsNone(task.get('desktop_seen_reply'))
 
-    def test_absence_on_first_poll_is_not_read(self):
-        self.native([])
-        self.assertIsNone(self.sample())
+    def assert_read(self, task, reply=R1):
+        self.assertEqual(task.get('desktop_seen_reply'), reply)
+        self.assertIsNone(task.get('desktop_unread_reply'))
+        self.assertIsNone(task.get('desktop_unread_at'))
 
-    def test_observed_removal_marks_only_that_reply_and_persists(self):
-        self.native(['task'])
-        self.assertIsNone(self.sample())
+    def test_focused_completion_is_read_on_every_refresh_without_observing_an_unread(self):
+        # A reply completed in the open conversation: Codex flipped it unread and read
+        # between our refreshes, so the tracker only ever sees it absent.
         self.native([])
-        self.assertEqual(self.sample(), 'reply-1')
+        self.assert_read(self.snapshot())
+        self.assert_read(self.snapshot())
         self.tracker = ReadTracker(self.source, self.cache)
-        self.assertEqual(self.sample(), 'reply-1')
-        self.assertNotEqual(self.sample('reply-2'), 'reply-2')
+        self.assert_read(self.snapshot())
+        self.assertEqual(json.loads(self.cache.read_text()), {'version': 2, 'seen': {'task': R1}, 'unread': {}})
 
-    def test_new_reply_racing_with_removal_is_not_marked(self):
-        self.native(['task']);self.sample()
+    def test_background_completion_stays_unread_until_codex_clears_it(self):
+        self.native([], seconds=1_700_000_000)
+        self.assert_read(self.snapshot())
+        self.native(['task'], seconds=1_700_000_100)
+        unread = self.snapshot(R2)
+        self.assert_unread(unread, R2, 1_700_000_100)
+        self.native(['task', 'other'], seconds=1_700_000_200)
+        self.assert_unread(self.snapshot(R2), R2, 1_700_000_100)
+        self.native([], seconds=1_700_000_300)
+        self.assert_read(self.snapshot(R2), R2)
+
+    def test_snapshot_older_than_the_reply_cannot_acknowledge_it(self):
+        self.native([], seconds=1_700_000_000)
+        self.assert_read(self.snapshot(R1))
+        # R2 finished after the last native write, so the absence says nothing about it.
+        newer = self.snapshot(R2)
+        self.assertEqual(newer['desktop_seen_reply'], R1)
+        self.assertNotEqual(newer['desktop_seen_reply'], R2)
+        self.native([], seconds=1_700_000_100)
+        self.assert_read(self.snapshot(R2), R2)
+        for reply in (None, '', 'not-a-time'):
+            with self.subTest(reply=reply):
+                self.assertIsNone(self.snapshot(reply, tid='odd').get('desktop_seen_reply'))
+
+    def test_only_desktop_tasks_follow_native_state(self):
+        for origin in ('cli', 'unknown', None):
+            with self.subTest(origin=origin):
+                self.native([])
+                task = self.snapshot(origin=origin)
+                self.assertIsNone(task.get('desktop_seen_reply'))
+                self.native(['task'])
+                task = self.snapshot(origin=origin)
+                self.assertIsNone(task.get('desktop_unread_reply'))
+                self.assertFalse(self.cache.exists())
+
+    def test_unavailable_source_keeps_last_known_state_then_resynchronizes(self):
+        def write(text):
+            return lambda: self.source.write_text(text)
+
+        def versioned(version, scopes):
+            return write(json.dumps({STATE_KEY: {'version': version, 'unreadByIdentity': scopes}}))
+        breakages = {
+            'missing': self.source.unlink,
+            'empty': write(''),
+            'truncated': write('{'),
+            'no state': write('{}'),
+            'newer schema': versioned(2, {'account': {'local:host': []}}),
+            'bad ids': versioned(1, {'account': {'local:host': [1]}}),
+            'signed out': versioned(1, {}),
+            'no hosts': versioned(1, {'account': {}}),
+            'remote only': versioned(1, {'account': {'remote:host': []}}),
+        }
+        for name, break_source in breakages.items():
+            with self.subTest(source=name):
+                self.native(['task'], seconds=1_700_000_000)
+                self.assert_unread(self.snapshot())
+                break_source()
+                self.assert_unread(self.snapshot())
+                self.native([])
+                self.assert_read(self.snapshot())
+
+    def test_first_refresh_without_a_usable_source_is_not_read(self):
+        for text in (None, '', '{', '{}'):
+            with self.subTest(source=text):
+                if text is not None:
+                    self.source.write_text(text)
+                task = self.snapshot()
+                self.assertIsNone(task.get('desktop_seen_reply'))
+                self.assertIsNone(task.get('desktop_unread_reply'))
+
+    def test_restart_resynchronizes_a_stale_cached_unread_marker(self):
+        self.native(['task'], seconds=1_700_000_000)
+        self.assert_unread(self.snapshot())
+        self.tracker = ReadTracker(self.source, self.cache)
         self.native([])
-        self.assertIsNone(self.sample('reply-2'))
-
-    def test_missing_or_invalid_file_is_not_read(self):
-        for invalid in ('', '{', '{}'):
-            self.native(['task']);self.sample()
-            self.source.write_text(invalid)
-            self.assertIsNone(self.sample())
-            self.native([])
-            self.assertIsNone(self.sample())
-
-    def test_logout_and_identity_or_host_change_is_not_read(self):
-        for identity, host in (('different', 'local:host'), ('account', 'local:other')):
-            self.native(['task']);self.sample()
-            self.native([], identity, host)
-            self.assertIsNone(self.sample())
-        self.native(['task']);self.sample()
-        self.source.write_text(json.dumps({STATE_KEY: {'version': 1, 'unreadByIdentity': {}}}))
-        self.assertIsNone(self.sample())
-
-    def test_remote_state_does_not_clear_local_thread(self):
-        self.native(['task'], host='remote:host');self.sample()
-        self.native([], host='remote:host')
-        self.assertIsNone(self.sample())
+        self.assert_read(self.snapshot())
+        self.assertEqual(json.loads(self.cache.read_text()), {'version': 2, 'seen': {'task': R1}, 'unread': {}})
 
     def test_manual_unread_clears_seen_and_native_reread_clears_unread(self):
-        self.native(['task']);self.sample()
-        self.native([])
-        self.assertEqual(self.sample(), 'reply-1')
-
         self.native(['task'])
-        self.stamp_source(1_700_000_000)
+        self.snapshot()
+        self.native([])
+        self.assert_read(self.snapshot())
+
+        self.native(['task'], seconds=1_700_000_000)
         unread = self.snapshot()
-        self.assertIsNone(unread['desktop_seen_reply'])
         self.assert_unread(unread)
         self.assertEqual(json.loads(self.cache.read_text()), {
             'version': 2, 'seen': {},
-            'unread': {'task': {'reply': 'reply-1', 'at': unread['desktop_unread_at']}}})
+            'unread': {'task': {'reply': R1, 'at': unread['desktop_unread_at']}}})
 
         self.native([])
-        read = self.snapshot()
-        self.assertEqual(read['desktop_seen_reply'], 'reply-1')
-        self.assertIsNone(read.get('desktop_unread_reply'))
-        self.assertIsNone(read.get('desktop_unread_at'))
+        self.assert_read(self.snapshot())
         self.assertEqual(json.loads(self.cache.read_text())['unread'], {})
 
     def test_initial_unread_uses_source_time_and_survives_unrelated_writes_and_restart(self):
-        self.native(['task'])
-        self.stamp_source(1_700_000_000)
-        first = self.snapshot()
-        self.assert_unread(first)
+        self.native(['task'], seconds=1_700_000_000)
+        self.assert_unread(self.snapshot())
 
         # Another thread changes the whole file, but this thread did not re-enter unread.
-        self.native(['task', 'other'])
-        self.stamp_source(1_700_000_100)
+        self.native(['task', 'other'], seconds=1_700_000_100)
         self.assert_unread(self.snapshot())
         self.tracker = ReadTracker(self.source, self.cache)
         self.assert_unread(self.snapshot())
 
     def test_legacy_seen_cache_migrates_without_losing_other_threads(self):
-        self.cache.write_text(json.dumps({'task': 'reply-1', 'other': 'reply-other'}))
+        self.cache.write_text(json.dumps({'task': R1, 'other': 'reply-other'}))
         self.tracker = ReadTracker(self.source, self.cache)
         self.native([])
-        self.assertEqual(self.sample(), 'reply-1')
-        self.native(['task'])
-        self.stamp_source(1_700_000_000)
+        self.assert_read(self.snapshot())
+        self.native(['task'], seconds=1_700_000_000)
         unread = self.snapshot()
         self.assert_unread(unread)
         self.assertEqual(json.loads(self.cache.read_text()), {
             'version': 2, 'seen': {'other': 'reply-other'},
-            'unread': {'task': {'reply': 'reply-1', 'at': unread['desktop_unread_at']}}})
+            'unread': {'task': {'reply': R1, 'at': unread['desktop_unread_at']}}})
 
     def test_new_reply_does_not_rebind_native_unread_marker(self):
-        self.native(['task'])
-        self.stamp_source(1_700_000_000)
+        self.native(['task'], seconds=1_700_000_000)
         self.assert_unread(self.snapshot())
-        self.native(['task'])
-        self.stamp_source(1_700_000_100)
-        self.assert_unread(self.snapshot('reply-2'))
+        self.native(['task'], seconds=1_700_000_100)
+        self.assert_unread(self.snapshot(R2))
         self.tracker = ReadTracker(self.source, self.cache)
-        self.assert_unread(self.snapshot('reply-2'))
+        self.assert_unread(self.snapshot(R2))
         self.native([])
-        read = self.snapshot('reply-2')
-        self.assertEqual(read['desktop_seen_reply'], 'reply-2')
-        self.assertIsNone(read.get('desktop_unread_reply'))
+        self.assert_read(self.snapshot(R2), R2)
 
-    def test_racing_new_reply_removal_clears_unread_without_marking_new_reply_read(self):
-        self.native(['task'])
-        self.stamp_source(1_700_000_000)
+    def test_removal_written_before_a_new_reply_clears_unread_without_marking_the_reply_read(self):
+        self.native(['task'], seconds=1_700_000_000)
         self.assert_unread(self.snapshot())
-        self.native([])
-        read = self.snapshot('reply-2')
+        self.native([], seconds=1_700_000_010)
+        read = self.snapshot(R2)
         self.assertIsNone(read['desktop_seen_reply'])
         self.assertIsNone(read.get('desktop_unread_reply'))
         self.assertIsNone(read.get('desktop_unread_at'))
 
-    def test_invalid_or_missing_source_preserves_last_known_unread(self):
-        for invalid in (None, '', '{', '{}'):
-            with self.subTest(source=invalid):
-                self.native(['task'])
-                self.stamp_source(1_700_000_000)
-                self.assert_unread(self.snapshot())
-                if invalid is None:
-                    self.source.unlink()
-                else:
-                    self.source.write_text(invalid)
-                self.assert_unread(self.snapshot())
-                self.native([])
-                task = self.snapshot()
-                self.assertIsNone(task['desktop_seen_reply'])
-                self.assert_unread(task)
-
-    def test_scope_disappearance_preserves_unread_and_does_not_synthesize_read(self):
-        for identity, host in (('different', 'local:host'), ('account', 'local:other')):
-            with self.subTest(identity=identity, host=host):
-                self.native(['task'])
-                self.stamp_source(1_700_000_000)
-                self.assert_unread(self.snapshot())
-                self.native([], identity=identity, host=host)
-                task = self.snapshot()
-                self.assertIsNone(task['desktop_seen_reply'])
-                self.assert_unread(task)
-                self.native([])
-                task = self.snapshot()
-                self.assertIsNone(task['desktop_seen_reply'])
-                self.assert_unread(task)
-
-    def test_logout_without_any_remaining_scope_preserves_unread(self):
-        self.native(['task'])
-        self.stamp_source(1_700_000_000)
-        self.assert_unread(self.snapshot())
-        self.source.write_text(json.dumps({STATE_KEY: {'version': 1, 'unreadByIdentity': {}}}))
-        task = self.snapshot()
-        self.assertIsNone(task['desktop_seen_reply'])
-        self.assert_unread(task)
-
-    def test_startup_absence_preserves_cached_unread_without_synthesizing_read(self):
-        self.native(['task'])
-        self.stamp_source(1_700_000_000)
-        self.assert_unread(self.snapshot())
-        self.tracker = ReadTracker(self.source, self.cache)
-        self.native([])
-        task = self.snapshot()
-        self.assertIsNone(task['desktop_seen_reply'])
-        self.assert_unread(task)
-
     def test_reentering_unread_after_reread_records_new_source_time(self):
-        self.native(['task'])
-        self.stamp_source(1_700_000_000)
+        self.native(['task'], seconds=1_700_000_000)
         self.assert_unread(self.snapshot())
-        self.native([]);self.sample()
-        self.native(['task'])
-        self.stamp_source(1_700_000_100)
+        self.native([])
+        self.assert_read(self.snapshot())
+        self.native(['task'], seconds=1_700_000_100)
         self.assert_unread(self.snapshot(), seconds=1_700_000_100)
 
     def test_adding_existing_unread_to_another_known_scope_preserves_its_marker(self):
-        self.source.write_text(json.dumps({STATE_KEY: {'version': 1, 'unreadByIdentity': {
-            'account': {'local:host': ['task'], 'local:other': []}}}}))
+        def scopes(first, other):
+            self.source.write_text(json.dumps({STATE_KEY: {'version': 1, 'unreadByIdentity': {
+                'account': {'local:host': first, 'local:other': other}}}}))
+
+        scopes(['task'], [])
         self.stamp_source(1_700_000_000)
         self.assert_unread(self.snapshot())
 
-        self.source.write_text(json.dumps({STATE_KEY: {'version': 1, 'unreadByIdentity': {
-            'account': {'local:host': ['task'], 'local:other': ['task']}}}}))
+        scopes(['task'], ['task'])
         self.stamp_source(1_700_000_100)
-        task = self.snapshot()
-        self.assertIsNone(task['desktop_seen_reply'])
-        self.assert_unread(task)
+        self.assert_unread(self.snapshot())
 
-        # Removing it from just one host also leaves the original unread action intact.
-        self.source.write_text(json.dumps({STATE_KEY: {'version': 1, 'unreadByIdentity': {
-            'account': {'local:host': [], 'local:other': ['task']}}}}))
+        # Removing it from just one host leaves it unread, with its original action time.
+        scopes([], ['task'])
         self.stamp_source(1_700_000_200)
-        task = self.snapshot()
-        self.assertIsNone(task['desktop_seen_reply'])
-        self.assert_unread(task)
+        self.assert_unread(self.snapshot())
 
 
 if __name__ == '__main__':

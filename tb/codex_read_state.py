@@ -1,4 +1,4 @@
-"""Observe Codex Desktop read/unread changes; never write its state."""
+"""Mirror Codex Desktop's current read/unread classification; never write its state."""
 from datetime import datetime, timezone
 import json
 import os
@@ -31,15 +31,34 @@ def read_unread(path):
                 if not isinstance(ids, list) or not all(isinstance(i, str) for i in ids):
                     return None
                 scopes[(identity, host)] = set(ids)
+        if not scopes:
+            return None  # Signed out or no local host: unknown, not "everything is read".
         return scopes, datetime.fromtimestamp(after.st_mtime, timezone.utc).isoformat()
     except (OSError, ValueError):
         return None
 
 
+def _not_older(modified, reply):
+    """True when a native write is at or after the reply it would acknowledge."""
+    try:
+        return datetime.fromisoformat(modified) >= datetime.fromisoformat(reply.replace('Z', '+00:00'))
+    except (AttributeError, TypeError, ValueError):
+        return False
+
+
 class ReadTracker:
+    """Follow Codex's current classification for Desktop tasks on every refresh.
+
+    A usable snapshot is authoritative: listed means unread, absent means read. That
+    is Codex's classification, not proof that a person read the text; it also covers
+    a reply that completed in the open conversation and was cleared within
+    milliseconds. The cache keeps the last known state for when the snapshot is
+    unavailable, plus the action time Switch needs to order its own read actions
+    against a native mark-unread.
+    """
+
     def __init__(self, source, cache):
         self.source, self.cache = Path(source), Path(cache)
-        self.previous = {}
         self.seen, self.unread = {}, {}
         try:
             saved = json.loads(self.cache.read_text())
@@ -54,38 +73,30 @@ class ReadTracker:
             pass
 
     def apply(self, tasks):
-        by_id = {t['id']: t for t in tasks if t.get('agent') == 'codex'}
+        # CLI and unknown-origin sessions have no native read signal.
+        by_id = {t['id']: t for t in tasks if t.get('agent') == 'codex' and t.get('origin') == 'desktop'}
         snapshot = read_unread(self.source)
         changed = False
-        if snapshot is None:
-            self.previous = {}  # Unknown/missing state is not a read event.
-        else:
+        if snapshot:
             scopes, modified = snapshot
-            all_unread = set().union(*scopes.values()) if scopes else set()
-            previous_unread = {tid for scope in self.previous.values() for tid in scope}
-            next_previous = {}
-            for scope, unread in scopes.items():
-                previous = self.previous.get(scope, {})
-                for tid in previous.keys() - all_unread:
-                    reply = previous[tid]
-                    # A concurrent new reply must not be cleared by an older read event.
-                    if tid in by_id and reply and by_id[tid].get('last_reply') == reply and self.seen.get(tid) != reply:
-                        self.seen[tid] = reply
-                        changed = True
-                    if tid in self.unread:
-                        del self.unread[tid]
-                        changed = True
-                for tid in unread:
-                    reply = by_id.get(tid, {}).get('last_reply')
-                    entered = scope in self.previous and tid not in previous_unread
-                    if reply and (tid not in self.unread or entered):
-                        # Use the native write time, not poll time. Preserve an old
-                        # action across unrelated writes, new replies and restarts.
+            listed = set().union(*scopes.values())
+            for tid, task in by_id.items():
+                reply = task.get('last_reply')
+                if tid in listed:
+                    if reply and tid not in self.unread:
+                        # Use the native write time, not poll time, and keep it while the thread
+                        # stays listed: Switch read actions are ordered against it.
                         self.unread[tid] = {'reply': reply, 'at': modified}
                         self.seen.pop(tid, None)
                         changed = True
-                next_previous[scope] = {tid: by_id[tid].get('last_reply') for tid in unread if tid in by_id}
-            self.previous = next_previous  # Logout/host removal is not a read event.
+                    continue
+                if tid in self.unread:
+                    del self.unread[tid]
+                    changed = True
+                # A snapshot written before the reply says nothing about that reply.
+                if reply and self.seen.get(tid) != reply and _not_older(modified, reply):
+                    self.seen[tid] = reply
+                    changed = True
         for tid, task in by_id.items():
             task['desktop_seen_reply'] = self.seen.get(tid)
             unread = self.unread.get(tid, {})
