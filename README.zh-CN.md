@@ -25,12 +25,12 @@ Switch 读取本地会话记录，不调用模型，也不上传会话。Python 
 需要 **Python 3.9+**、浏览器，以及本机的 Codex 或 Claude Code 会话。日常运行不需要 `pip install`、Node.js 或桌面框架。
 
 ```sh
-git clone https://github.com/Simon-Wong-hjz/switch.git
+git clone https://github.com/simwong98/switch.git
 cd switch
 python3 taskboard.py
 ```
 
-也可以[下载源码 ZIP](https://github.com/Simon-Wong-hjz/switch/archive/refs/heads/main.zip)，解压后在目录内执行最后一条命令。Windows 上如果 Python 命令名是 `python`，用它替换 `python3`。
+也可以[下载源码 ZIP](https://github.com/simwong98/switch/archive/refs/heads/main.zip)，解压后在目录内执行最后一条命令。Windows 上如果 Python 命令名是 `python`，用它替换 `python3`。
 
 命令会打开 `http://127.0.0.1:8765/`。选择要添加的会话，再拖到相应分组。看板初始化后新建的会话会自动加入，之前手动移出的除外。服务每五秒更新数据，也可以点击刷新按钮立即扫描。
 
@@ -69,7 +69,7 @@ Setup 会列出拟修改的配置，确认后再执行。`--only codex` 或 `--o
 
 也可以把这段安装要求交给 Agent：
 
-> 把 https://github.com/Simon-Wong-hjz/switch 安装到我指定的目录。按 README 检查 Python、启动看板，告诉我访问地址和卸载命令。开启客户端 hooks 或登录自启前先问我。不要修改客户端原有的通知设置。
+> 把 https://github.com/simwong98/switch 安装到我指定的目录。按 README 检查 Python、启动看板，告诉我访问地址和卸载命令。开启客户端 hooks 或登录自启前先问我。不要修改客户端原有的通知设置。
 
 ## 提醒和已读状态
 

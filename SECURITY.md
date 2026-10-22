@@ -2,9 +2,9 @@
 
 ## Report privately / 私密报告
 
-Use [Report a vulnerability](https://github.com/Simon-Wong-hjz/switch/security/advisories/new) for security issues. Include the affected revision, environment, impact and a minimal reproduction with synthetic data. Do not post credentials, conversation text or personal configuration in public issues. Reports in English or Chinese are welcome. This is a personal project; there is no guaranteed response time.
+Use [Report a vulnerability](https://github.com/simwong98/switch/security/advisories/new) for security issues. Include the affected revision, environment, impact and a minimal reproduction with synthetic data. Do not post credentials, conversation text or personal configuration in public issues. Reports in English or Chinese are welcome. This is a personal project; there is no guaranteed response time.
 
-安全问题请使用 [Report a vulnerability](https://github.com/Simon-Wong-hjz/switch/security/advisories/new) 私密报告。请提供受影响版本、环境、影响和使用合成数据的最小复现。不要在公开 Issue 中发布凭据、会话正文或个人配置。中英文均可；这是个人项目，无法承诺固定响应时间。
+安全问题请使用 [Report a vulnerability](https://github.com/simwong98/switch/security/advisories/new) 私密报告。请提供受影响版本、环境、影响和使用合成数据的最小复现。不要在公开 Issue 中发布凭据、会话正文或个人配置。中英文均可；这是个人项目，无法承诺固定响应时间。
 
 ## Boundaries / 边界
 

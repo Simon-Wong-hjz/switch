@@ -25,12 +25,12 @@ Switch reads local session records. It makes no model calls and does not upload 
 You need **Python 3.9+**, a browser, and local Codex or Claude Code sessions. There is no `pip install`, Node.js requirement, or desktop framework to install for normal use.
 
 ```sh
-git clone https://github.com/Simon-Wong-hjz/switch.git
+git clone https://github.com/simwong98/switch.git
 cd switch
 python3 taskboard.py
 ```
 
-You can also [download the source ZIP](https://github.com/Simon-Wong-hjz/switch/archive/refs/heads/main.zip), extract it and run the last command there. On Windows, use `python` if that is your Python command.
+You can also [download the source ZIP](https://github.com/simwong98/switch/archive/refs/heads/main.zip), extract it and run the last command there. On Windows, use `python` if that is your Python command.
 
 The command opens `http://127.0.0.1:8765/`. Choose the sessions to add, then drag them into a group. New sessions created after the board is initialized are added automatically unless previously removed. The service refreshes data every five seconds; the refresh button requests an immediate scan.
 
@@ -69,7 +69,7 @@ Setup lists proposed changes and asks before applying them. Use `--only codex` o
 
 You can give an Agent this installation request:
 
-> Install Switch from https://github.com/Simon-Wong-hjz/switch in a directory I choose. Follow its README, check Python, start it, and report the URL and uninstall command. Ask before enabling client hooks or login startup. Do not change my clients' notification settings.
+> Install Switch from https://github.com/simwong98/switch in a directory I choose. Follow its README, check Python, start it, and report the URL and uninstall command. Ask before enabling client hooks or login startup. Do not change my clients' notification settings.
 
 ## Alerts and read state
 
