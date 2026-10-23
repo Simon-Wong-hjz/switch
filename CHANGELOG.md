@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed Windows legacy-encoding failures in Codex session titles, native read-state loading and UTF-8 hook input. Added regressions and made the test suite portable across Windows/POSIX; POSIX-only integration checks remain explicitly skipped on Windows.
+- 修复 Windows 默认编码导致的 Codex 中文标题乱码、原生已读状态读取失败、UTF-8 hook 输入丢失；新增回归用例并修正测试的平台假设，Windows 明确跳过 POSIX 专属集成检查。
 - Fixed Codex Desktop new-reply flags that stayed after a reply finished in an already open conversation. Switch now follows Codex's current read/unread state on every refresh, and keeps its last known state when that state is unavailable or older than the reply.
 
 Initial public version of Switch:
@@ -15,6 +17,6 @@ Initial public version of Switch:
 - Local settings import/export and ownership-aware uninstall.
 - Python standard-library runtime, bundled Markdown rendering and synthetic regression tests.
 
-首个公开版本：本地多任务看板、回复全文阅读、中英文与明暗主题、仅“重要”栏提醒及角标、浏览器 App、可选 hooks 与 macOS 登录自启，以及设置迁移和卸载清理。Windows 实机验证仍待完成。
+首个公开版本：本地多任务看板、回复全文阅读、中英文与明暗主题、仅“重要”栏提醒及角标、浏览器 App、可选 hooks 与 macOS 登录自启，以及设置迁移和卸载清理。Windows 验证范围见 README。
 
 修复：在已打开的 Codex Desktop 会话里完成回复后，新回复标记不再残留；现在每次刷新都以 Codex 当前的已读/未读状态为准，状态不可用或早于回复时保持已知状态。

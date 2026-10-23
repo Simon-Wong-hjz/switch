@@ -39,6 +39,7 @@ class Module(unittest.TestCase):
             setting.start()
             self.addCleanup(setting.stop)
         for setting in (patch.object(autostart.sys, 'platform', 'darwin'),
+                        patch.object(autostart.os, 'getuid', return_value=501, create=True),
                         patch.object(autostart, '_launchctl', side_effect=self.launchctl)):
             setting.start()
             self.addCleanup(setting.stop)
@@ -238,6 +239,7 @@ class Module(unittest.TestCase):
         self.assertFalse((self.home / 'Library').exists())
 
 
+@unittest.skipIf(os.name == 'nt', 'The macOS launch guard requires /bin/sh')
 class Script(unittest.TestCase):
     """Execute only the generated /bin/sh guard, with a tiny local Python file."""
 

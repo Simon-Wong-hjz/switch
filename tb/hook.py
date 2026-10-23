@@ -14,7 +14,8 @@ MAX_BYTES = 5 * 1024 * 1024   # 超过就轮转一次，只保留上一份
 def main():
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from tb import paths
-    e = json.load(sys.stdin)
+    # Clients send UTF-8 JSON even when Windows uses a legacy console encoding.
+    e = json.load(sys.stdin.buffer)
     agent = sys.argv[1] if len(sys.argv) > 1 else 'codex'
     rec = {'ts': datetime.now(timezone.utc).isoformat(timespec='milliseconds'),
            'event': e.get('hook_event_name'), 'session_id': e.get('session_id'),

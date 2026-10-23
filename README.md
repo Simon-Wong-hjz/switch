@@ -36,7 +36,7 @@ The command opens `http://127.0.0.1:8765/`. Choose the sessions to add, then dra
 
 Keep the terminal running, or enable the optional macOS login service below. Press Ctrl-C to stop, or run `python3 taskboard.py stop` from another terminal. For another port, use `python3 taskboard.py run --port 8766`; add `--no-open` to avoid opening a browser.
 
-**Platform status:** used and tested on macOS with Python 3.12 and Edge. Chrome supports the browser App entry, but its complete installation and removal flow has not been manually verified here. Windows paths are implemented; real Windows client, installation and uninstall checks are still pending. Treat Windows as experimental. The interface is bilingual; command-line messages are currently Chinese.
+**Platform status:** used and tested on macOS with Python 3.12 and Edge. On Windows with Python 3.14, Codex session discovery, UTF-8 titles and replies, native read-state synchronization, HTTP endpoints, service start/stop, and isolated hook installation/execution/removal have been verified. Windows browser interactions, App installation/removal, notifications, real-client hook delivery and Claude Code remain unverified; Windows support is still experimental. Chrome supports the browser App entry, but its complete installation and removal flow has not been manually verified here. The interface is bilingual; command-line messages are currently Chinese.
 
 ## Install as an App
 

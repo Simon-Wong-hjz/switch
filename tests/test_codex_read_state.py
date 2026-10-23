@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
+from unittest.mock import patch
 from tb.codex_read_state import ReadTracker, STATE_KEY
 
 
@@ -57,6 +58,20 @@ class ReadStateTests(unittest.TestCase):
         self.tracker = ReadTracker(self.source, self.cache)
         self.assert_read(self.snapshot())
         self.assertEqual(json.loads(self.cache.read_text()), {'version': 2, 'seen': {'task': R1}, 'unread': {}})
+
+    def test_utf8_native_state_with_non_ascii_settings_under_legacy_encoding(self):
+        self.native([])
+        saved = json.loads(self.source.read_text())
+        saved['workspace-label'] = '中文工作区 🧪'
+        self.source.write_text(json.dumps(saved, ensure_ascii=False), encoding='utf-8')
+        original_open = Path.open
+
+        def legacy_open(path, *args, **kwargs):
+            kwargs.setdefault('encoding', 'cp936')
+            return original_open(path, *args, **kwargs)
+
+        with patch.object(Path, 'open', legacy_open):
+            self.assert_read(self.snapshot())
 
     def test_background_completion_stays_unread_until_codex_clears_it(self):
         self.native([], seconds=1_700_000_000)

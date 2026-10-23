@@ -140,6 +140,7 @@ class Collect(unittest.TestCase):
 
 
 class Registry(unittest.TestCase):
+    @unittest.skipIf(os.name == 'nt', 'POSIX process identity check requires ps; Windows Claude testing is separate')
     def test_reused_pid_is_ignored(self):
         lstart = subprocess.run(['ps', '-o', 'lstart=', '-p', str(os.getpid())], capture_output=True, text=True).stdout.strip()
         utc = time.strftime('%a %b %d %H:%M:%S %Y', time.gmtime(time.mktime(time.strptime(lstart, '%a %b %d %H:%M:%S %Y'))))

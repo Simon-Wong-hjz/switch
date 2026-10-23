@@ -22,7 +22,7 @@ def command(agent):
     hook = paths.REPO / 'tb' / 'hook.py'
     code = (f'import os,runpy,sys;sys.dont_write_bytecode=True;{MARK};p={str(hook)!r};sys.argv=[p,{agent!r}];'
             'os.path.isfile(p) and runpy.run_path(p,run_name="__main__")')
-    if os.name == 'nt':  # Windows 的实际运行验证留到发布后。
+    if os.name == 'nt':  # cmd.exe 包装器；失败仍静默以 0 退出。
         return subprocess.list2cmdline([sys.executable, '-c', code]) + ' >NUL 2>&1 & exit /b 0'
     # 解释器也可能已被卸载；在 shell 层保证任何失败都静默以 0 退出。
     return shlex.quote(sys.executable) + ' -c ' + shlex.quote(code) + ' >/dev/null 2>&1 || :'

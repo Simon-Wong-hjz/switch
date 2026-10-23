@@ -36,7 +36,7 @@ python3 taskboard.py
 
 使用期间保持终端运行，或启用下方可选的 macOS 登录自启。按 Ctrl-C 停止，也可以在另一终端执行 `python3 taskboard.py stop`。需要更换端口时，执行 `python3 taskboard.py run --port 8766`；加 `--no-open` 可不自动打开浏览器。
 
-**平台状态：** 已在 macOS、Python 3.12 和 Edge 上实际使用并验证。Chrome 支持浏览器 App 入口，但尚未在本项目中人工走完安装、使用及卸载全流程。Windows 路径已适配，真实客户端、安装和卸载验证仍待完成，目前属于实验性支持。网页界面支持双语，命令行提示目前为中文。
+**平台状态：** 已在 macOS、Python 3.12 和 Edge 上实际使用并验证。Windows + Python 3.14 已验证 Codex 会话发现、UTF-8 标题与回复、原生已读状态同步、HTTP 接口、服务启停，以及隔离配置中的 hook 安装、执行和卸载。Windows 浏览器交互、App 安装卸载、通知、真实客户端 hook 投递与 Claude Code 尚未验证，仍属于实验性支持。Chrome 支持浏览器 App 入口，但尚未在本项目中人工走完安装及卸载全流程。网页界面支持双语，命令行提示目前为中文。
 
 ## 安装为 App
 

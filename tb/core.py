@@ -31,7 +31,7 @@ def thread_id(path):
 def load_titles():
     titles = {}
     try:
-        with open(os.path.join(CODEX, 'session_index.jsonl'), errors='ignore') as fh:
+        with open(os.path.join(CODEX, 'session_index.jsonl'), encoding='utf-8', errors='ignore') as fh:
             for line in fh:
                 try:
                     o = json.loads(line)

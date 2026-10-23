@@ -131,7 +131,20 @@ class CodexSourceTests(unittest.TestCase):
                 self.assertEqual(result['resume'], 'codex resume test')
 
 
-class ArchiveDuringScanTests(unittest.TestCase):
+class CodexIndexTests(unittest.TestCase):
+    def test_titles_are_utf8_even_with_a_legacy_system_encoding(self):
+        with tempfile.TemporaryDirectory() as directory:
+            index = Path(directory) / 'session_index.jsonl'
+            index.write_text(json.dumps({'id': 'task', 'thread_name': '中文标题 🧪'}, ensure_ascii=False) + '\n', encoding='utf-8')
+            original_open = open
+
+            def legacy_open(*args, **kwargs):
+                kwargs.setdefault('encoding', 'cp936')
+                return original_open(*args, **kwargs)
+
+            with patch.object(taskboard, 'CODEX', directory), patch('builtins.open', side_effect=legacy_open):
+                self.assertEqual(taskboard.load_titles(), {'task': '中文标题 🧪'})
+
     def test_file_moved_during_poll_does_not_stop_collection(self):
         filename = '/tmp/rollout-2026-10-13T09-00-00-00000000-0000-0000-0000-000000000001.jsonl'
         with patch.object(taskboard.glob, 'glob', return_value=[filename]), \

@@ -9,7 +9,7 @@ STATE_KEY = 'electron-thread-read-state-v1'
 
 def read_unread(path):
     try:
-        with Path(path).open() as source:
+        with Path(path).open(encoding='utf-8') as source:
             before = os.fstat(source.fileno())
             saved = json.load(source)
             after = os.fstat(source.fileno())
@@ -61,7 +61,7 @@ class ReadTracker:
         self.source, self.cache = Path(source), Path(cache)
         self.seen, self.unread = {}, {}
         try:
-            saved = json.loads(self.cache.read_text())
+            saved = json.loads(self.cache.read_text(encoding='utf-8'))
             if isinstance(saved, dict):
                 seen = saved.get('seen', {}) if saved.get('version') == 2 else saved
                 self.seen = {k: v for k, v in seen.items() if isinstance(v, str)} if isinstance(seen, dict) else {}
@@ -104,5 +104,5 @@ class ReadTracker:
             task['desktop_unread_at'] = unread.get('at')
         if changed:
             tmp = self.cache.with_suffix('.tmp')
-            tmp.write_text(json.dumps({'version': 2, 'seen': self.seen, 'unread': self.unread}))
+            tmp.write_text(json.dumps({'version': 2, 'seen': self.seen, 'unread': self.unread}), encoding='utf-8')
             tmp.replace(self.cache)

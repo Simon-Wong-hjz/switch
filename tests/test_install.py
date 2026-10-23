@@ -24,7 +24,7 @@ USER_SETTINGS = {
 
 def snapshot(root):
     """目录下每个文件的相对路径 -> 内容。"""
-    return {str(p.relative_to(root)): p.read_bytes() for p in sorted(Path(root).rglob('*')) if p.is_file()}
+    return {p.relative_to(root).as_posix(): p.read_bytes() for p in sorted(Path(root).rglob('*')) if p.is_file()}
 
 
 class Install(unittest.TestCase):
@@ -113,10 +113,26 @@ class Install(unittest.TestCase):
         rec = json.loads((self.data / 'events.jsonl').read_text(encoding='utf-8').splitlines()[-1])
         self.assertEqual((rec['event'], rec['session_id'], rec['agent']), ('Stop', 's1', 'claude'))
 
+    def test_codex_hook_reads_utf8_payload_under_legacy_encoding(self):
+        self.cli('setup', '--yes', '--only', 'codex')
+        config = json.loads(paths.CODEX_HOOKS.read_bytes())
+        command = config['hooks']['PermissionRequest'][0]['hooks'][0]['command']
+        env = dict(os.environ, TASKBOARD_HOME=str(self.home), TASKBOARD_DATA=str(self.data),
+                   PYTHONUTF8='0', PYTHONIOENCODING='cp936')
+        payload = {'hook_event_name': 'PermissionRequest', 'session_id': 'test', 'turn_id': 'turn',
+                   'tool_input': {'description': '中文命令 🧪'}}
+        result = subprocess.run(command, shell=True, input=json.dumps(payload, ensure_ascii=False).encode('utf-8'),
+                                env=env, capture_output=True, timeout=10)
+        self.assertEqual((result.returncode, result.stdout, result.stderr), (0, b'', b''))
+        events = self.data / 'events.jsonl'
+        self.assertTrue(events.exists(), 'A UTF-8 hook event must not be silently dropped')
+        record = json.loads(events.read_text(encoding='utf-8').splitlines()[-1])
+        self.assertEqual(record['detail'], payload['tool_input']['description'])
+
     def test_deleting_the_directory_without_uninstall_is_harmless(self):
         # 从一份临时副本安装，然后直接删掉副本：残留的 hook 必须静默以 0 退出（否则 Claude Code 会拦截用户的每条消息）
         copy = Path(self.tmp.name) / 'copy'
-        shutil.copytree(REPO, copy, ignore=shutil.ignore_patterns('data', '__pycache__', 'tests'))
+        shutil.copytree(REPO, copy, ignore=shutil.ignore_patterns('.git', 'data', '__pycache__', 'tests'))
         self.cli('setup', '--yes', repo=copy)
         shutil.rmtree(copy)
         commands = [h['command'] for g in self.claude_settings()['hooks'].values() for gg in g for h in gg['hooks'] if 'TASKBOARD_HOOK=1' in h['command']]
@@ -125,7 +141,6 @@ class Install(unittest.TestCase):
             r = subprocess.run(cmd, shell=True, input='{"hook_event_name":"UserPromptSubmit"}', capture_output=True, text=True)
             self.assertEqual((r.returncode, r.stdout, r.stderr), (0, '', ''))
 
-    @unittest.skipIf(os.name == 'nt', 'Windows runtime checks deferred until release')
     def test_missing_interpreter_is_silent_and_succeeds(self):
         with patch.object(hooks.sys, 'executable', str(Path(self.tmp.name) / 'missing-python')):
             command = hooks.command('claude')
@@ -178,7 +193,7 @@ class Install(unittest.TestCase):
 
     def test_other_installation_keeps_its_hooks(self):
         other = Path(self.tmp.name) / 'other installation'
-        shutil.copytree(REPO, other, ignore=shutil.ignore_patterns('data', '__pycache__', 'tests'))
+        shutil.copytree(REPO, other, ignore=shutil.ignore_patterns('.git', 'data', '__pycache__', 'tests'))
         other_data = Path(self.tmp.name) / 'other-data'
         self.cli('setup', '--yes')
         env = dict(os.environ, TASKBOARD_HOME=str(self.home), TASKBOARD_DATA=str(other_data))
