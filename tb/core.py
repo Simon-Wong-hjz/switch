@@ -87,7 +87,8 @@ def scan(path):
     """Read one rollout and return the facts the page needs, or None if it is not the user's own session."""
     facts = {'turn_start': None, 'turn_id': None, 'turn_end': None, 'aborted': None, 'questions': [], 'replied': set(),
              'last_user': None, 'last_final': None, 'final_head': '', 'first_user': '', 'first_user_ts': None,
-             'reply': None}
+             'reply': None, 'last_activity': None}
+    latest_activity = None
     with open(path, 'rb') as fh:
         first = fh.readline()
         try:
@@ -108,6 +109,14 @@ def scan(path):
                 o = json.loads(raw)
             except ValueError:
                 continue  # A writer may not have finished the last JSONL record yet.
+            # Windows can leave mtime unchanged while the rollout writer is open.
+            # All timestamped records count as activity, including tool updates.
+            try:
+                activity = parse_ts(o.get('timestamp'))
+                if activity.utcoffset() is not None and (latest_activity is None or activity > latest_activity):
+                    latest_activity = activity
+            except (AttributeError, TypeError, ValueError):
+                pass
             p = o.get('payload') or {}
             if o.get('type') == 'event_msg':
                 event_type = p.get('type')
@@ -159,6 +168,8 @@ def scan(path):
                     facts['last_final'] = descriptor['timestamp']
                     facts['final_head'] = excerpt(replies.final_text(o, 'codex').strip())
                     facts['reply'] = descriptor
+    if latest_activity is not None:
+        facts['last_activity'] = latest_activity.isoformat()
     return facts
 
 
@@ -186,12 +197,13 @@ def load_events():
 
 def derive(tid, path, facts, title, now, event=None):
     mtime = dt.datetime.fromtimestamp(os.path.getmtime(path), dt.timezone.utc)
+    activity = max(mtime, parse_ts(facts['last_activity'])) if facts.get('last_activity') else mtime
     later = lambda a, b: a is not None and (b is None or parse_ts(a) > parse_ts(b))
     running = later(facts['turn_start'], facts['turn_end'])
     states, pending = [], []
     if running:
         states.append('running')
-        idle = (now - mtime).total_seconds() / 60
+        idle = (now - activity).total_seconds() / 60
         if idle > STALE_MINUTES:
             states.append('stale')
     maybe = []
@@ -241,8 +253,8 @@ def derive(tid, path, facts, title, now, event=None):
             later(facts['turn_start'], facts['last_final']) or later(facts['last_user'], facts['last_final']))),
         'waiting_since': min(since_candidates) if since_candidates else None,
         'started': facts['first_user_ts'],
-        'last_activity': mtime.isoformat(),
-        'idle_min': round((now - mtime).total_seconds() / 60),
+        'last_activity': activity.isoformat(),
+        'idle_min': round((now - activity).total_seconds() / 60),
     }
 
 

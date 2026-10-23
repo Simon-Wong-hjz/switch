@@ -1,6 +1,7 @@
 """Regression cases based on Codex 0.162.1 live session records."""
 import datetime as dt
 import json
+import os
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -158,6 +159,63 @@ class CodexIndexTests(unittest.TestCase):
             with patch.object(taskboard.os.path, 'getmtime', return_value=taskboard.time.time()), \
                  patch.object(taskboard, 'scan_cached', side_effect=FileNotFoundError):
                 self.assertEqual(taskboard.collect(30)['tasks'], [])
+
+
+class CodexActivityTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.path = Path(self.tmp.name) / 'rollout.jsonl'
+        self.now = dt.datetime(2026, 10, 24, 0, 40, tzinfo=dt.timezone.utc)
+        self.old = self.now - dt.timedelta(minutes=25)
+        self.rows = [
+            {'type': 'session_meta', 'payload': {'source': 'cli', 'cwd': self.tmp.name}},
+            {'timestamp': self.old.isoformat(), 'type': 'event_msg',
+             'payload': {'type': 'task_started', 'turn_id': 'active-turn'}},
+            {'timestamp': self.old.isoformat(), 'type': 'response_item',
+             'payload': {'type': 'message', 'role': 'user', 'content': [{'text': 'Start'}]}},
+        ]
+
+    def write(self):
+        self.path.write_text(''.join(json.dumps(row) + '\n' for row in self.rows), encoding='utf-8')
+        # Windows may retain the old mtime while another process keeps a writer open.
+        os.utime(self.path, (self.old.timestamp(), self.old.timestamp()))
+
+    def result(self):
+        return taskboard.derive('active', self.path, taskboard.scan_cached(self.path), 'Active', self.now)
+
+    def test_recent_plain_message_with_unchanged_mtime_is_not_stale(self):
+        self.write()
+        self.assertIn('stale', self.result()['states'])
+        recent = self.now - dt.timedelta(minutes=10)
+        self.rows.append({'timestamp': recent.isoformat(), 'type': 'response_item',
+                          'payload': {'type': 'message', 'role': 'user', 'content': [{'text': 'Continue'}]}})
+        self.write()
+        result = self.result()
+        self.assertEqual(result['idle_min'], 10)
+        self.assertEqual(taskboard.parse_ts(result['last_activity']), recent)
+        self.assertNotIn('stale', result['states'])
+
+    def test_tool_activity_counts_without_a_new_user_message(self):
+        recent = self.now - dt.timedelta(minutes=1)
+        self.rows.append({'timestamp': recent.isoformat(), 'type': 'response_item',
+                          'payload': {'type': 'custom_tool_call_output', 'output': 'done'}})
+        # A delayed record must not move the activity time backwards.
+        self.rows.append({'timestamp': self.old.isoformat(), 'type': 'event_msg', 'payload': {'type': 'token_count'}})
+        self.write()
+        result = self.result()
+        self.assertEqual(result['idle_min'], 1)
+        self.assertNotIn('stale', result['states'])
+
+    def test_missing_invalid_or_naive_activity_timestamp_uses_mtime(self):
+        for stamp in (None, 'invalid', '2026-10-24T00:39:00', 123):
+            with self.subTest(stamp=stamp):
+                self.rows = [{'type': 'session_meta', 'payload': {'source': 'cli'}},
+                             {'timestamp': stamp, 'type': 'event_msg', 'payload': {'type': 'token_count'}}]
+                self.write()
+                result = self.result()
+                self.assertEqual(result['idle_min'], 25)
+                self.assertEqual(taskboard.parse_ts(result['last_activity']), self.old)
 
 
 if __name__ == '__main__':

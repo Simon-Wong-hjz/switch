@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed false Codex inactivity warnings on Windows when an open rollout file keeps an old modification time. New user messages, replies and tool activity now advance the activity timestamp from the log records.
+- 修复 Windows 日志持续追加但文件修改时间未刷新时的 Codex“无更新”误报；普通消息、回复和工具活动均通过日志时间更新活跃状态。
 - Fixed duplicate Windows instances sharing an occupied loopback port; the listener now reserves its port exclusively and the real lifecycle regression also runs on Windows.
 - 修复 Windows 第二个实例可绑定已占用端口的问题，改用独占监听，并启用真实启动、端口冲突、认证停止回归测试。
 - Fixed Windows legacy-encoding failures in Codex session titles, native read-state loading and UTF-8 hook input. Added regressions and made the test suite portable across Windows/POSIX; POSIX-only integration checks remain explicitly skipped on Windows.
