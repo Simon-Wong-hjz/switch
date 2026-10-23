@@ -74,6 +74,11 @@ class BoardServerTests(unittest.TestCase):
         self.assertEqual(server.server_address[0], '127.0.0.1')
         self.assertGreater(server.server_port, 0)
 
+    def test_second_server_cannot_share_an_occupied_port(self):
+        with self.assertRaises(OSError):
+            other = create_server(self.server.server_port, self.root, lambda: {'tasks': []})
+            self.addCleanup(other.server_close)
+
     def test_reply_endpoint_requires_token_origin_and_local_host(self):
         for headers in ({'X-Taskboard-Token': ''}, {'X-Taskboard-Token': 'wrong'},
                         {'Origin': 'https://foreign.example'}, {'Host': 'foreign.example'}):

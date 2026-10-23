@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import secrets
+import socket
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from socketserver import TCPServer
@@ -15,7 +16,12 @@ from tb.settings_store import SettingsStore, InvalidSettings, SettingsConflict, 
 
 
 class _LoopbackHTTPServer(ThreadingHTTPServer):
+    # On Windows SO_REUSEADDR permits another listener to bind the same port.
+    allow_reuse_address = os.name != 'nt'
+
     def server_bind(self):
+        if os.name == 'nt':
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
         # A literal loopback address needs no reverse DNS lookup. HTTPServer's
         # default lookup can block startup when the system resolver is slow.
         TCPServer.server_bind(self)

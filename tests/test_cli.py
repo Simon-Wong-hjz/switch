@@ -207,7 +207,6 @@ class Lifecycle(unittest.TestCase):
             process.kill()
             process.communicate(timeout=5)
 
-    @unittest.skipIf(os.name == 'nt', 'Windows terminate does not deliver a catchable POSIX SIGTERM')
     def test_real_start_repeat_bind_failure_and_authenticated_stop(self):
         probe = ('import faulthandler,runpy,sys; faulthandler.dump_traceback_later(5); '
                  'sys.argv=sys.argv[1:]; runpy.run_path(sys.argv[0],run_name="__main__")')

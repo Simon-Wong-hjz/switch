@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed duplicate Windows instances sharing an occupied loopback port; the listener now reserves its port exclusively and the real lifecycle regression also runs on Windows.
+- 修复 Windows 第二个实例可绑定已占用端口的问题，改用独占监听，并启用真实启动、端口冲突、认证停止回归测试。
 - Fixed Windows legacy-encoding failures in Codex session titles, native read-state loading and UTF-8 hook input. Added regressions and made the test suite portable across Windows/POSIX; POSIX-only integration checks remain explicitly skipped on Windows.
 - 修复 Windows 默认编码导致的 Codex 中文标题乱码、原生已读状态读取失败、UTF-8 hook 输入丢失；新增回归用例并修正测试的平台假设，Windows 明确跳过 POSIX 专属集成检查。
 - Fixed Codex Desktop new-reply flags that stayed after a reply finished in an already open conversation. Switch now follows Codex's current read/unread state on every refresh, and keeps its last known state when that state is unavailable or older than the reply.
